@@ -499,6 +499,7 @@ def callback(
     - demo: Both registry and demo agent (runs directly)
     - demo_crm: CRM demo with email MCP, mail sink, and CRM API (runs directly)
     - demo_supervisor: Same as demo_crm but with CugaSupervisor multi-agent coordination
+    - travel_agent: Travel planning agent with multi-agent supervisor (flights, hotels, weather, etc.)
     - registry: The MCP registry service only (runs directly)
     - appworld: AppWorld environment and API servers (runs directly)
     - memory: The memory service (runs directly)
@@ -665,7 +666,16 @@ def _start_demo_crm_services(
 # Helper function to validate service
 def validate_service(service: str):
     """Validate service name."""
-    valid_services = ["demo", "demo_crm", "demo_supervisor", "manager", "registry", "appworld", "memory"]
+    valid_services = [
+        "demo",
+        "demo_crm",
+        "demo_supervisor",
+        "manager",
+        "registry",
+        "appworld",
+        "memory",
+        "travel_agent",
+    ]
 
     if service not in valid_services:
         logger.error(f"Unknown service: {service}. Valid options are: {', '.join(valid_services)}")
@@ -695,7 +705,7 @@ def _resolve_apps(
 def start(
     service: str = typer.Argument(
         ...,
-        help="Service to start: demo, demo_crm, demo_supervisor, manager, registry, appworld, or memory",
+        help="Service to start: demo, demo_crm, demo_supervisor, travel_agent, manager, registry, appworld, or memory",
     ),
     host: str = typer.Option(
         "127.0.0.1",
@@ -755,6 +765,7 @@ def start(
       - demo: Starts both registry and demo agent directly (registry on port 8001, demo on port 7860)
       - demo_crm: Starts CRM demo with email MCP, mail sink, and CRM API servers
       - demo_supervisor: Same as demo_crm but with CugaSupervisor multi-agent coordination enabled
+      - travel_agent: Starts Travel Agent with multi-agent supervisor (flights, hotels, weather, finance, compliance)
       - manager: Manage-config mode: registry uses managed MCP YAML, policy filesync off, demo on 7860
       - registry: Starts only the registry service directly (uvicorn on port 8001)
       - appworld: Starts AppWorld environment and API servers (environment on port 8000, api on port 9000)
@@ -937,6 +948,76 @@ def start(
         )
         return
 
+    elif service == "travel_agent":
+        try:
+            # Enable supervisor mode with travel agent configuration
+            os.environ["DYNACONF_SUPERVISOR__ENABLED"] = "true"
+            supervisor_config_path = os.path.join(
+                os.getcwd(), "docs", "examples", "travel_agent", "config", "supervisor_travel_agent.yaml"
+            )
+
+            if not os.path.exists(supervisor_config_path):
+                logger.error(f"Travel Agent config not found: {supervisor_config_path}")
+                logger.error(
+                    "Please ensure docs/examples/travel_agent/config/supervisor_travel_agent.yaml exists"
+                )
+                raise typer.Exit(1)
+
+            os.environ["DYNACONF_SUPERVISOR__CONFIG_PATH"] = supervisor_config_path
+            logger.info(f"✈️  Travel Agent supervisor enabled with config: {supervisor_config_path}")
+
+            # Start registry and demo services
+            app_mgr = _make_app_manager()
+            logger.info("🧹 Checking for existing processes on required ports...")
+            kill_processes_by_port([app_mgr.registry_port, settings.server_ports.demo])
+
+            os.environ["CUGA_HOST"] = host
+            if sandbox:
+                logger.info("Starting Travel Agent with remote sandbox mode enabled")
+                os.environ["DYNACONF_FEATURES__LOCAL_SANDBOX"] = "false"
+
+            registry_process = app_mgr.start_registry(host)
+            if registry_process is None or registry_process.poll() is not None:
+                logger.error("Registry service failed to start. Exiting.")
+                stop_direct_processes()
+                raise typer.Exit(1)
+
+            demo_process = app_mgr.start_demo(host, sandbox=sandbox)
+            if demo_process is None or demo_process.poll() is not None:
+                logger.error("Demo service failed to start. Exiting.")
+                stop_direct_processes()
+                raise typer.Exit(1)
+
+            if direct_processes:
+                table = Table(show_header=False, box=None, padding=(0, 1))
+                table.add_column("Service", style="bold white")
+                table.add_column("URL", style="cyan")
+                table.add_row("Registry:", f"http://localhost:{app_mgr.registry_port}")
+                table.add_row("Demo:", f"http://localhost:{settings.server_ports.demo}")
+
+                console.print()
+                console.print(
+                    Panel(
+                        table,
+                        title="[bold yellow]✈️  Travel Agent services are running. Press Ctrl+C to stop[/bold yellow]",
+                        border_style="cyan",
+                        padding=(1, 2),
+                    )
+                )
+                console.print()
+                console.print(
+                    "[bold green]💡 The Travel Agent is now ready to help you plan trips![/bold green]"
+                )
+                console.print("   Ask questions like: 'Plan a trip from New York to Los Angeles'")
+                console.print()
+                wait_for_direct_processes()
+
+        except Exception as e:
+            logger.error(f"Error starting Travel Agent services: {e}")
+            stop_direct_processes()
+            raise typer.Exit(1)
+        return
+
     elif service == "registry":
         try:
             logger.info("🧹 Checking for existing processes on required ports...")
@@ -1053,6 +1134,19 @@ def manage_service(action: str, service: str):
                     del direct_processes[service_name]
             if not stopped_any:
                 logger.info(f"{service} services are not running")
+        elif service == "travel_agent":
+            # Stop Travel Agent services (registry and demo)
+            stopped_any = False
+            for service_name in ["registry", "demo"]:
+                if service_name in direct_processes:
+                    process = direct_processes[service_name]
+                    if process and process.poll() is None:
+                        logger.info(f"Stopping {service_name}...")
+                        kill_process_tree(process.pid)
+                        stopped_any = True
+                    del direct_processes[service_name]
+            if not stopped_any:
+                logger.info("Travel Agent services are not running")
         elif service == "registry":
             # Stop only registry for registry service
             if "registry" in direct_processes:
@@ -1098,7 +1192,7 @@ def manage_service(action: str, service: str):
 def stop(
     service: str = typer.Argument(
         ...,
-        help="Service to stop: demo, demo_crm, demo_supervisor, registry, appworld, or memory",
+        help="Service to stop: demo, demo_crm, demo_supervisor, travel_agent, registry, appworld, or memory",
     ),
 ):
     """
@@ -1108,6 +1202,7 @@ def stop(
       - demo: Stops both registry and demo agent (direct processes)
       - demo_crm: Stops all CRM demo services (email sink, email MCP, CRM API, registry, demo)
       - demo_supervisor: Same as demo_crm
+      - travel_agent: Stops Travel Agent services (registry, demo)
       - registry: Stops only the registry service (direct process)
       - appworld: Stops both AppWorld environment and API servers (direct processes)
       - memory: Stops the memory service (direct process)
@@ -1116,6 +1211,7 @@ def stop(
       cuga stop demo             # Stop both registry and demo services
       cuga stop demo_crm         # Stop all CRM demo services
       cuga stop demo_supervisor  # Stop all supervisor demo services
+      cuga stop travel_agent     # Stop Travel Agent services
       cuga stop registry         # Stop only the registry service
       cuga stop appworld         # Stop AppWorld servers
       cuga stop memory           # Stop memory service
@@ -1152,7 +1248,7 @@ def viz():
 def status(
     service: str = typer.Argument(
         "all",
-        help="Service to check status: demo, demo_crm, demo_supervisor, registry, appworld, memory, or all",
+        help="Service to check status: demo, demo_crm, demo_supervisor, travel_agent, registry, appworld, memory, or all",
     ),
 ):
     """
@@ -1162,6 +1258,7 @@ def status(
       - demo: Shows status of both registry and demo agent (direct processes)
       - demo_crm: Shows status of all CRM demo services (email sink, email MCP, CRM API, registry, demo)
       - demo_supervisor: Same as demo_crm
+      - travel_agent: Shows status of Travel Agent services (registry, demo)
       - registry: Shows status of registry service only (direct process)
       - appworld: Shows status of both AppWorld environment and API servers (direct processes)
       - memory: Shows status of memory service (direct process)
@@ -1171,6 +1268,7 @@ def status(
       cuga status              # Show status of all services
       cuga status demo         # Show status of demo services (registry + demo)
       cuga status demo_crm     # Show status of CRM demo services
+      cuga status travel_agent # Show status of Travel Agent services
       cuga status registry     # Show status of registry only
       cuga status appworld     # Show status of AppWorld servers
       cuga status memory       # Show status of memory service
@@ -1198,6 +1296,19 @@ def status(
                     logger.info(f"{service_name} service: Terminated")
             else:
                 logger.info(f"{service_name} service: Not running")
+        return
+
+    elif service == "travel_agent":
+        # Show status of Travel Agent services
+        for service_name in ["registry", "demo"]:
+            if service_name in direct_processes:
+                process = direct_processes[service_name]
+                if process.poll() is None:
+                    logger.info(f"{service_name.capitalize()} service: Running (PID: {process.pid})")
+                else:
+                    logger.info(f"{service_name.capitalize()} service: Terminated")
+            else:
+                logger.info(f"{service_name.capitalize()} service: Not running")
         return
 
     elif service == "registry":

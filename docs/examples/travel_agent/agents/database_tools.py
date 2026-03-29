@@ -484,7 +484,6 @@ def get_pending_approvals(manager_id: Optional[str] = None) -> str:
         )
 
 
-
 @tool
 def wait_for_approval(itinerary_id: int, timeout_seconds: int = 300, check_interval: int = 5) -> str:
     """

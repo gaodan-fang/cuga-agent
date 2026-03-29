@@ -120,6 +120,7 @@ def create_error_command(
 def create_cuga_supervisor_graph(
     supervisor_model: BaseChatModel,
     agents: Dict[str, Union[CugaAgent, Dict[str, Any]]],
+    supervisor_config: Optional[Dict[str, Any]] = None,
 ) -> StateGraph:
     """
     Create supervisor subgraph that orchestrates multiple CugaAgent instances.
@@ -127,16 +128,18 @@ def create_cuga_supervisor_graph(
     Args:
         supervisor_model: The language model for the supervisor
         agents: Dict mapping agent names to CugaAgent instances (internal) or A2A config (external)
+        supervisor_config: Optional supervisor configuration dict from YAML
 
     Returns:
         StateGraph implementing the CugaSupervisor architecture
     """
-    return _create_supervisor_conversational_graph(supervisor_model, agents)
+    return _create_supervisor_conversational_graph(supervisor_model, agents, supervisor_config)
 
 
 def _create_supervisor_conversational_graph(
     supervisor_model: BaseChatModel,
     agents: Dict[str, Union[CugaAgent, Dict[str, Any]]],
+    supervisor_config: Optional[Dict[str, Any]] = None,
 ) -> StateGraph:
     """
     Create supervisor conversational mode graph - supervisor acts as a single agent with delegation tools.
@@ -147,6 +150,7 @@ def _create_supervisor_conversational_graph(
     Args:
         supervisor_model: The language model for the supervisor
         agents: Dict mapping agent names to CugaAgent instances (internal) or A2A config (external)
+        supervisor_config: Optional supervisor configuration dict from YAML
 
     Returns:
         StateGraph implementing the Supervisor Conversational architecture
@@ -185,7 +189,8 @@ def _create_supervisor_conversational_graph(
         async def delegate_to_agent(task: str, variables: Optional[List[str]] = None) -> Any:
             logger.info(f"Delegating to {agent_name}: {task[:100]}...")
 
-            if isinstance(agent_or_config, CugaAgent):
+            # Check if it's a CugaAgent by class name (handles multiple imports)
+            if agent_or_config.__class__.__name__ == 'CugaAgent':
                 vars_to_pass = {}
                 if variables is not None:
                     frame = inspect.currentframe()
@@ -256,8 +261,10 @@ def _create_supervisor_conversational_graph(
         return delegate_to_agent
 
     # Factory function to create prepare_agents_and_prompt node
-    def create_prepare_agents_and_prompt_node(base_agents, base_prompt_template_str, base_instructions):
-        """Factory to create prepare node with closure over agents and prompt template."""
+    def create_prepare_agents_and_prompt_node(
+        base_agents, base_prompt_template_str, base_instructions, base_supervisor_config
+    ):
+        """Factory to create prepare node with closure over agents, prompt template, and supervisor config."""
 
         async def prepare_agents_and_prompt(
             state: CugaSupervisorState, config: Optional[RunnableConfig] = None
@@ -358,6 +365,11 @@ def _create_supervisor_conversational_graph(
             # Create prompt using template (similar to create_mcp_prompt)
             is_autonomous_subtask = state.sub_task is not None and state.sub_task.strip() != ""
 
+            # Extract special_instructions from supervisor config if provided
+            supervisor_special_instructions = None
+            if base_supervisor_config:
+                supervisor_special_instructions = base_supervisor_config.get("special_instructions")
+
             # Use Jinja2 template rendering
             from jinja2 import Template
 
@@ -369,7 +381,7 @@ def _create_supervisor_conversational_graph(
                 is_autonomous_subtask=is_autonomous_subtask,
                 instructions=base_instructions,
                 enable_todos=True,  # Always enable todos for supervisor conversational mode
-                special_instructions=None,
+                special_instructions=supervisor_special_instructions,
             )
 
             return Command(
@@ -609,7 +621,9 @@ def _create_supervisor_conversational_graph(
         return execute_agent_tool
 
     # Create node instances
-    prepare_node = create_prepare_agents_and_prompt_node(agents, prompt_template_str, instructions)
+    prepare_node = create_prepare_agents_and_prompt_node(
+        agents, prompt_template_str, instructions, supervisor_config
+    )
     call_model_node = create_call_model_node(supervisor_model)
     execute_agent_tool_node = create_execute_agent_tool_node(agent_tools_context)
 

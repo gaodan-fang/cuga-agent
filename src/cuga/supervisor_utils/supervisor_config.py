@@ -49,6 +49,38 @@ async def load_supervisor_config(yaml_path: str) -> SupervisorConfig:
                 "config": agent_config,
             }
             logger.info(f"Registered external agent: {agent_name}")
+
+        # Check if this agent should be imported from an existing module
+        elif "import_from" in agent_config:
+            # Import pre-configured agent from Python module
+            import_path = agent_config["import_from"]
+            logger.info(f"Importing pre-configured agent: {agent_name} from {import_path}")
+
+            try:
+                import importlib
+
+                # Split module path and agent variable name
+                # e.g., "travel_agent.agents.flight_agent" -> module="travel_agent.agents", var="flight_agent"
+                module_path, agent_var = import_path.rsplit(".", 1)
+
+                # Import the module and get the agent instance
+                module = importlib.import_module(module_path)
+                agent = getattr(module, agent_var)
+
+                # Verify it's a CugaAgent instance by checking class name
+                # (isinstance check can fail due to multiple imports of the same class)
+                if not (hasattr(agent, '__class__') and agent.__class__.__name__ == 'CugaAgent'):
+                    raise TypeError(
+                        f"Imported object '{agent_var}' is not a CugaAgent instance (got {type(agent)})"
+                    )
+
+                agents[agent_name] = agent
+                logger.info(f"✅ Successfully imported agent: {agent_name}")
+
+            except Exception as e:
+                logger.error(f"Failed to import agent '{agent_name}' from '{import_path}': {e}")
+                raise
+
         else:
             # Internal agent - create CugaAgent instance
             logger.info(f"Creating internal agent: {agent_name}")

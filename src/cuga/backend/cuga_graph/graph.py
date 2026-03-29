@@ -363,6 +363,7 @@ class DynamicAgentGraph:
             supervisor_subgraph = create_cuga_supervisor_graph(
                 supervisor_model=supervisor_model,
                 agents=agents,
+                supervisor_config=supervisor_config.supervisor if supervisor_config else None,
             )
 
             # Compile and add as subgraph node

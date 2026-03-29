@@ -1,0 +1,44 @@
+# Employee Travel Policy
+# Budget-conscious policy for standard employees
+
+role: employee
+
+flight_policy:
+  max_cost_per_person: 500
+  allowed_classes:
+    - economy
+  preferred_airlines: []  # No restrictions
+  max_layovers: 2
+  direct_flight_preference: false  # Not required
+  
+hotel_policy:
+  max_rate_per_night: 150
+  min_rating: 3.0
+  allowed_classes:
+    - standard
+    - comfort
+  required_amenities:
+    - Free Wi-Fi
+  preferred_amenities:
+    - Breakfast included
+    - Parking
+    
+expense_policy:
+  max_total_budget: 2000
+  meal_per_diem: 50
+  ground_transport_daily: 50
+  incidental_daily: 25
+  
+approval_policy:
+  approval_required: true
+  approver_role: approving_manager  # Employee trips require approving manager approval
+  auto_approve_under: 1000  # Auto-approve if under $1000
+  exception_request_allowed: true
+  escalation_hours: 48  # Escalate if no response in 48 hours
+  
+restrictions:
+  business_class_allowed: false
+  luxury_hotels_allowed: false
+  car_rental_class: economy
+
+# Made with Bob

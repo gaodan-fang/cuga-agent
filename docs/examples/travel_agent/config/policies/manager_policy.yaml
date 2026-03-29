@@ -1,0 +1,48 @@
+# Manager Travel Policy
+# Enhanced policy for managers with elevated privileges
+
+role: manager
+
+flight_policy:
+  max_cost_per_person: 800
+  allowed_classes:
+    - economy
+    - premium_economy
+  preferred_airlines: []
+  max_layovers: 2
+  direct_flight_preference: true  # Prefer direct when available
+  
+hotel_policy:
+  max_rate_per_night: 250
+  min_rating: 3.5
+  allowed_classes:
+    - standard
+    - comfort
+    - upscale
+  required_amenities:
+    - Free Wi-Fi
+    - Breakfast included
+  preferred_amenities:
+    - Gym
+    - Business center
+    - Parking
+    
+expense_policy:
+  max_total_budget: 4000
+  meal_per_diem: 75
+  ground_transport_daily: 75
+  incidental_daily: 35
+  
+approval_policy:
+  approval_required: true
+  approver_role: approving_manager  # Manager trips require approving manager approval
+  auto_approve_under: 2000
+  exception_request_allowed: true
+  escalation_hours: 48  # Escalate if no response in 48 hours
+  
+restrictions:
+  business_class_allowed: false  # Only for international flights
+  luxury_hotels_allowed: false
+  car_rental_class: standard
+
+# Made with Bob

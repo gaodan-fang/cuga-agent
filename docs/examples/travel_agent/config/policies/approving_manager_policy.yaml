@@ -1,0 +1,52 @@
+# Approving Manager Travel Policy
+# Policy for personnel responsible for approving travel requests
+# Approving Managers do not require approval for their own travel
+
+role: approving_manager
+
+flight_policy:
+  max_cost_per_person: 1500
+  allowed_classes:
+    - economy
+    - premium_economy
+    - business
+  preferred_airlines: []
+  max_layovers: 1
+  direct_flight_preference: true
+  
+hotel_policy:
+  max_rate_per_night: 400
+  min_rating: 4.0
+  allowed_classes:
+    - comfort
+    - upscale
+    - luxury
+  required_amenities:
+    - Free Wi-Fi
+    - Breakfast included
+    - Gym
+  preferred_amenities:
+    - Business center
+    - Concierge
+    - Spa
+    - Parking
+    
+expense_policy:
+  max_total_budget: 8000
+  meal_per_diem: 100
+  ground_transport_daily: 100
+  incidental_daily: 50
+  
+approval_policy:
+  requires_approval: false  # Approving managers don't need approval
+  approver_role: none  # No approver needed
+  auto_approve_under: null  # All trips auto-approved
+  exception_request_allowed: false  # No exceptions needed
+  escalation_hours: null
+  
+restrictions:
+  business_class_allowed: true
+  luxury_hotels_allowed: true
+  car_rental_class: premium
+
+# Made with Bob

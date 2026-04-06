@@ -803,6 +803,9 @@ def start(
 
     if service == "manager":
         try:
+            from cuga.backend.server.managed_mcp import ensure_managed_mcp_file_exists, get_managed_mcp_path
+            from cuga.backend.server.demo_manage_setup import setup_demo_manage_config
+            
             os.environ["CUGA_MANAGER_MODE"] = "true"
             os.environ["DYNACONF_POLICY__FILESYSTEM_SYNC"] = "false"
             managed_path = ensure_managed_mcp_file_exists(get_managed_mcp_path())
@@ -873,6 +876,9 @@ def start(
 
     # Handle direct execution services (demo and registry)
     if service == "demo":
+        from cuga.backend.server.managed_mcp import ensure_managed_mcp_file_exists, get_managed_mcp_path
+        from cuga.backend.server.demo_manage_setup import setup_demo_manage_config
+        
         os.environ["CUGA_DEMO_ADVANCED"] = "true"
         os.environ["CUGA_MANAGER_MODE"] = "true"
         os.environ["DYNACONF_POLICY__FILESYSTEM_SYNC"] = "false"
@@ -965,6 +971,34 @@ def start(
 
             os.environ["DYNACONF_SUPERVISOR__CONFIG_PATH"] = supervisor_config_path
             logger.info(f"✈️  Travel Agent supervisor enabled with config: {supervisor_config_path}")
+
+            # Reset config database and set Travel Agent configuration
+            os.environ["CUGA_MANAGER_MODE"] = "true"
+            os.environ["DYNACONF_POLICY__FILESYSTEM_SYNC"] = "false"
+            os.environ["MCP_SERVERS_FILE"] = "none"
+
+            # Set agent name BEFORE setup so it gets saved to database
+            os.environ["CUGA_AGENT_NAME"] = "Travel Agent"
+            os.environ["CUGA_AGENT_DESCRIPTION"] = "AI-powered corporate travel planning system"
+
+            from cuga.backend.server.managed_mcp import ensure_managed_mcp_file_exists, get_managed_mcp_path
+            from cuga.backend.server.config_store import reset_config_db, save_draft
+            import asyncio
+
+            ensure_managed_mcp_file_exists(get_managed_mcp_path())
+            logger.info("🧹 Resetting config db for Travel Agent...")
+
+            # Reset database and save Travel Agent config
+            reset_config_db()  # Not async
+            travel_agent_config = {
+                "agent": {
+                    "name": "Travel Agent",
+                    "description": "AI-powered corporate travel planning system",
+                },
+                "tools": [],
+            }
+            asyncio.run(save_draft(travel_agent_config, "cuga-default"))
+            logger.info("✅ Travel Agent configuration saved")
 
             # Start registry and demo services
             app_mgr = _make_app_manager()

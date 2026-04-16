@@ -18,6 +18,8 @@ from loguru import logger
 
 # Get the package root from path_store
 PACKAGE_ROOT = Path(os.environ.get("CUGA_PACKAGE_ROOT", Path(__file__).parent.resolve()))
+DEMO_TOOLS_ROOT = (PACKAGE_ROOT / "demo_tools").resolve()
+REPO_ROOT = PACKAGE_ROOT.parent.parent.resolve()
 LOGGING_DIR = os.environ.get("CUGA_LOGGING_DIR", os.path.join(PACKAGE_ROOT, "./logging"))
 TRAJECTORY_DATA_DIR = os.path.join(LOGGING_DIR, "trajectory_data")
 TRACES_DIR = os.path.join(LOGGING_DIR, "traces")
@@ -150,6 +152,12 @@ validators = [
     Validator("secrets.db_encryption_key_env", default="CUGA_SECRET_KEY"),
     Validator("secrets.vault_addr", default=""),
     Validator("secrets.vault_token_env", default="VAULT_TOKEN"),
+    Validator("secrets.vault_auth_method", default=""),
+    Validator("secrets.vault_k8s_role", default=""),
+    Validator("secrets.vault_k8s_mount_path", default="kubernetes"),
+    Validator("secrets.vault_k8s_jwt_path", default="/var/run/secrets/kubernetes.io/serviceaccount/token"),
+    Validator("secrets.vault_cacert", default=""),
+    Validator("secrets.vault_skip_verify", default=False),
     Validator("secrets.vault_mount", default="secret"),
     Validator("secrets.vault_kv_version", default=""),
     Validator("secrets.vault_write_enabled", default=False),
@@ -164,6 +172,23 @@ validators = [
     Validator("auth.require_https", default=False),
     Validator("auth.ssl_keyfile", default=""),
     Validator("auth.ssl_certfile", default=""),
+    Validator("auth.oidc_skip_verify", default=False),
+    Validator("auth.oidc_ca_bundle", default=""),
+    Validator("auth.iam_proxy_url", default=""),
+    Validator("auth.iam_proxy_skip_verify", default=False),
+    Validator("auth.iam_proxy_ca_bundle", default=""),
+    Validator("auth.role_token_source", default="auto"),
+    Validator("advanced_features.builtin_tools", default=["knowledge"]),
+    # Evolve integration
+    Validator("evolve.enabled", default=False),
+    Validator("evolve.url", default="http://127.0.0.1:8201/sse"),
+    Validator("evolve.mode", default="auto"),
+    Validator("evolve.app_name", default="evolve"),
+    Validator("evolve.lite_mode_only", default=True),
+    Validator("evolve.save_on_success", default=True),
+    Validator("evolve.save_on_failure", default=True),
+    Validator("evolve.async_save", default=True),
+    Validator("evolve.timeout", default=30.0),
 ]
 
 EVAL_CONFIG_TOML_PATH = _find_config_file("eval_config.toml", "EVAL_CONFIG_TOML_PATH")
@@ -202,6 +227,10 @@ mem0_file_path = os.path.join(MEMORY_DIR, "memory_settings.mem0.toml")
 milvus_file_path = os.path.join(MEMORY_DIR, "memory_settings.milvus.toml")
 tips_extractor_file_path = os.path.join(MEMORY_DIR, "memory_settings.tips_extractor.toml")
 
+# Knowledge configuration
+KNOWLEDGE_DIR = os.path.join(CONFIGURATIONS_DIR, "knowledge")
+knowledge_file_path = os.path.join(KNOWLEDGE_DIR, "knowledge_settings.toml")
+
 if base_settings.advanced_features.enable_memory:
     logger.info(f"Mem0 config path:   {mem0_file_path}")
     logger.info(f"Milvus config path:   {milvus_file_path}")
@@ -239,6 +268,7 @@ settings_files = [
     mem0_file_path,
     milvus_file_path,
     tips_extractor_file_path,
+    knowledge_file_path,
 ]
 
 settings = Dynaconf(

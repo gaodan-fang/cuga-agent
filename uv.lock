@@ -950,6 +950,7 @@ dependencies = [
     { name = "fastapi", version = "0.135.3", source = { registry = "https://pypi.org/simple" }, extra = ["standard"], marker = "python_full_version >= '3.12'" },
     { name = "fastembed" },
     { name = "fastmcp" },
+    { name = "google-search-results" },
     { name = "httpx" },
     { name = "hvac" },
     { name = "langchain" },
@@ -968,6 +969,7 @@ dependencies = [
     { name = "loguru" },
     { name = "markdownify" },
     { name = "mcp", extra = ["cli"] },
+    { name = "openlit" },
     { name = "pgvector" },
     { name = "playwright" },
     { name = "psutil" },
@@ -976,6 +978,7 @@ dependencies = [
     { name = "pymilvus", extra = ["milvus-lite"] },
     { name = "python-dotenv" },
     { name = "pyyaml" },
+    { name = "requests" },
     { name = "sqlite-vec" },
     { name = "tavily-python" },
     { name = "typer" },
@@ -1044,6 +1047,7 @@ requires-dist = [
     { name = "fastapi", extras = ["standard"] },
     { name = "fastembed", specifier = ">=0.4.0" },
     { name = "fastmcp", specifier = ">=3.2.0" },
+    { name = "google-search-results", specifier = ">=2.4.2" },
     { name = "httpx" },
     { name = "hvac", specifier = ">=2.0.0" },
     { name = "langchain", specifier = ">=1.0" },
@@ -1063,6 +1067,7 @@ requires-dist = [
     { name = "markdownify" },
     { name = "mcp", extras = ["cli"], specifier = ">=1.23.0" },
     { name = "mem0ai", extras = ["extras"], marker = "extra == 'memory'" },
+    { name = "openlit", specifier = ">=1.4.0" },
     { name = "openlit", marker = "extra == 'observability'", specifier = ">=1.40.3" },
     { name = "pgvector", specifier = ">=0.4.2" },
     { name = "playwright", specifier = ">=1.49.0" },
@@ -1073,6 +1078,7 @@ requires-dist = [
     { name = "python-dotenv" },
     { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "rapidfuzz", marker = "extra == 'evaluation'" },
+    { name = "requests", specifier = ">=2.31.0" },
     { name = "sqlite-vec", specifier = ">=0.1.6" },
     { name = "tavily-python" },
     { name = "typer", specifier = ">=0.15.3" },
@@ -2004,6 +2010,15 @@ sdist = { url = "https://files.pythonhosted.org/packages/0a/3f/a753be0dcee352b7d
 wheels = [
     { url = "https://files.pythonhosted.org/packages/31/e5/384b1f383917b5f0ae92e28f47bc27b16e3d26cd9bacb25e9f8ecab3c8fe/google_genai-1.60.0-py3-none-any.whl", hash = "sha256:967338378ffecebec19a8ed90cf8797b26818bacbefd7846a9280beb1099f7f3", size = 719431, upload-time = "2026-01-21T22:17:28.086Z" },
 ]
+
+[[package]]
+name = "google-search-results"
+version = "2.4.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "requests" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/77/30/b3a6f6a2e00f8153549c2fa345c58ae1ce8e5f3153c2fe0484d444c3abcb/google_search_results-2.4.2.tar.gz", hash = "sha256:603a30ecae2af8e600b22635757a6df275dad4b934f975e67878ccd640b78245", size = 18818, upload-time = "2023-03-10T11:13:09.953Z" }
 
 [[package]]
 name = "googleapis-common-protos"

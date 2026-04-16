@@ -30,6 +30,7 @@ from cuga.sdk import CugaAgent
 from cuga.config import settings
 from cuga.configurations.instructions_manager import get_all_instructions_formatted
 from cuga.backend.cuga_graph.nodes.cuga_lite.executors import CodeExecutor
+from cuga.backend.llm.errors import extract_code_from_tool_use_failed
 
 # Pattern for extracting Python code blocks
 BACKTICK_PATTERN = r'```python(.*?)```'
@@ -524,7 +525,23 @@ def _create_supervisor_conversational_graph(
 
             logger.debug(f"Total messages for model (including system): {len(messages_for_model)}")
 
-            response = await base_model.ainvoke(messages_for_model, config=config or {})
+            try:
+                response = await base_model.ainvoke(messages_for_model, config=config or {})
+            except Exception as e:
+                # Handle Groq's tool_use_failed error when model tries to call tools without tool_choice
+                code = extract_code_from_tool_use_failed(e)
+                if code:
+                    logger.warning(
+                        "Model attempted tool call without tools bound (tool_use_failed). "
+                        "Using generated code from error"
+                    )
+                    response = type(
+                        "_FakeResponse", (), {"content": f"```python\n{code}\n```", "additional_kwargs": {}}
+                    )()
+                else:
+                    logger.error(f"Error in supervisor model invocation: {e}")
+                    raise e
+
             content = response.content
             reasoning_content = response.additional_kwargs.get('reasoning_content')
 

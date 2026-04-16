@@ -81,7 +81,13 @@ def failed_gen_to_code(failed_gen: dict) -> Optional[str]:
     if tool_name == "python" and isinstance(tool_args, str):
         return tool_args.replace("\\n", "\n").strip()
     if tool_name:
+        # Handle supervisor delegation where arguments is raw Python code (e.g., "await delegate_to_agent(...)")
         if isinstance(tool_args, str):
+            # Check if it's already Python code (starts with await or contains function call)
+            if tool_args.strip().startswith("await ") or "(" in tool_args:
+                # It's raw Python code, return as-is
+                return tool_args.replace("\\n", "\n").strip()
+            # Try to parse as JSON
             try:
                 tool_args = json.loads(tool_args)
             except json.JSONDecodeError:

@@ -1255,7 +1255,15 @@ def start(
                 raise typer.Exit(1)
 
             os.environ["DYNACONF_SUPERVISOR__CONFIG_PATH"] = supervisor_config_path
+            
+            # CRITICAL FIX: Reload settings after setting supervisor environment variables
+            # The settings object is loaded at import time, so we need to reload it
+            # to pick up the new DYNACONF_SUPERVISOR__* environment variables.
+            # Without this, the backend server won't recognize the supervisor configuration.
+            settings.reload()
             logger.info(f"✈️  Travel Agent supervisor enabled with config: {supervisor_config_path}")
+            logger.info(f"   Supervisor enabled: {settings.supervisor.enabled}")
+            logger.info(f"   Supervisor config path: {settings.supervisor.config_path}")
 
             # Reset config database and set Travel Agent configuration
             os.environ["CUGA_MANAGER_MODE"] = "true"

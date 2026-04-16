@@ -8,26 +8,37 @@ supervisor:
   description: "Supervisor for coordinating travel planning agents with policy compliance and approval workflows"
   
   special_instructions: |
-    # Travel Planning Workflow
+    # Travel Planning Workflow - STRICT EXECUTION
     
-    ## Step 1: Search (DO ONCE)
-    1. Delegate to flight_agent → returns JSON with up to 15 flights
-    2. Delegate to hotel_agent → returns JSON with up to 15 hotels
+    ## Phase 1: Search (Execute ONCE, then STOP)
+    ```python
+    flights = await delegate_to_flight_agent("Search flights from [origin] to [destination], departure [date], return [date]")
+    hotels = await delegate_to_hotel_agent("Search hotels in [destination] from [check-in] to [check-out]")
+    ```
+    **STOP HERE** - Do not continue to Phase 2 until you have both results.
     
-    ## Step 2: Compliance (DO ONCE - MANDATORY)
-    3. Delegate to compliance_agent with: "Filter these options for employee role: flights_json=[paste JSON], hotels_json=[paste JSON]"
-    4. The compliance_agent uses Cuga's Tool Guide system to apply policy constraints intelligently
-    5. Parse and present the compliant options in markdown tables with policy limits
+    ## Phase 2: Compliance (Execute ONCE, then STOP and PRESENT)
+    ```python
+    # Extract JSON from agent responses
+    compliance = await delegate_to_compliance_agent("Filter these options for employee role: flights_json=[flights JSON], hotels_json=[hotels JSON]")
+    ```
+    **CRITICAL**: After getting compliance results, you MUST:
+    1. Return the compliance_agent's EXACT response as your final answer
+    2. Do NOT summarize, do NOT paraphrase, do NOT skip any tables
+    3. Simply output: compliance (the variable containing the full response)
+    4. Then STOP and WAIT for user selection
     
-    ## Step 3: Approval (DO ONCE)
-    6. When user confirms their selection, delegate to approval_agent with trip details:
-       "Process approval: origin=[from user], destination=[from user], departure=[from user], return=[from user],
-        flight='[airline] [flight#], $[price]', hotel='[name], $[price/night]/night, $[total] total',
-        total_cost=$[calculated]"
+    ## Phase 3: Approval (ONLY after user selects)
+    When user says something like "I want flight X and hotel Y":
+    ```python
+    approval = await delegate_to_approval_agent("Process approval: origin=[from user], destination=[from user], departure=[date], return=[date], flight='[selection]', hotel='[selection]', total_cost=$[calculated]")
+    ```
     
-    CRITICAL: Call each agent ONLY ONCE. Extract data from search results. The approval_agent handles user info automatically.
-    
-    NOTE: The compliance_agent now uses LLM-based policy filtering with Cuga's Tool Guide system for intelligent policy enforcement.
+    **RULES**:
+    - Each phase executes ONCE only
+    - After Phase 2, your response MUST be the compliance_agent's full output
+    - Never skip showing the compliance tables to the user
+    - The approval_agent handles user info automatically
 
 agents:
 
@@ -41,13 +52,13 @@ agents:
     type: internal
     description: "Flight search specialist who finds and filters flights based on requirements and policies"
     import_from: docs.examples.travel_agent.agents.flight_agent
-    special_instructions: "Call search_flights() and return the raw JSON result. Do not format or present tables - the supervisor handles presentation."
+    special_instructions: "Call search_flights() and return ONLY the raw JSON string from the tool. Do not add any text, explanations, or formatting. Just return the JSON exactly as the tool outputs it."
 
   - name: hotel_agent
     type: internal
     description: "Hotel search specialist who finds and filters hotels based on requirements and policies"
     import_from: docs.examples.travel_agent.agents.hotel_agent
-    special_instructions: "Call search_hotels() and return the raw JSON result. Do not format or present tables - the supervisor handles presentation."
+    special_instructions: "Call search_hotels() and return ONLY the raw JSON string from the tool. Do not add any text, explanations, or formatting. Just return the JSON exactly as the tool outputs it."
 
   - name: weather_agent
     type: internal

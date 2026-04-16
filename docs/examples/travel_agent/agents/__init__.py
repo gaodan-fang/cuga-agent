@@ -83,7 +83,6 @@ flight_agent = CugaAgent(
         search_flights,
         filter_flights_by_price,
         filter_flights_by_airline,
-        get_cheapest_flight,
         filter_direct_flights_only,
     ]
 )
@@ -96,8 +95,6 @@ hotel_agent = CugaAgent(
         filter_hotels_by_price,
         filter_hotels_by_rating,
         filter_hotels_by_amenities,
-        get_best_value_hotel,
-        get_cheapest_hotel,
     ]
 )
 

@@ -149,15 +149,27 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.issue.number }}
-          # LLM provider selection.
-          # Default: OpenAI. To use a different provider, change AGENT_SETTING_CONFIG
-          # to one of: settings.groq.toml, settings.openrouter.toml, settings.watsonx.toml,
-          # settings.azure.toml, settings.google.toml, settings.litellm.toml, settings.rits.toml
-          # and set the matching secret (e.g. GROQ_API_KEY).
-          AGENT_SETTING_CONFIG: settings.openai.toml
+          # LLM provider + model selection.
+          # Configure without editing this file by setting repo VARIABLES
+          # (Settings > Secrets and variables > Actions > Variables tab):
+          #   CUGA_PROVIDER_CONFIG (optional) - one of:
+          #     settings.openai.toml (default), settings.groq.toml,
+          #     settings.openrouter.toml, settings.watsonx.toml,
+          #     settings.azure.toml, settings.google.toml,
+          #     settings.litellm.toml, settings.rits.toml
+          #   CUGA_MODEL (optional) - fully-qualified model name, e.g.
+          #     openai/gpt-4o-mini, openai/gpt-4o, groq/llama-3.3-70b-versatile
+          #     If unset, cuga uses the default from the provider config file.
+          #
+          # Set the matching SECRET for your provider (e.g. OPENAI_API_KEY,
+          # GROQ_API_KEY). All common ones are forwarded below - whichever is
+          # set wins; the rest stay empty and are ignored.
+          AGENT_SETTING_CONFIG: ${{ vars.CUGA_PROVIDER_CONFIG || 'settings.openai.toml' }}
+          MODEL_NAME: ${{ vars.CUGA_MODEL }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          # Optional: override the model (otherwise uses the default from settings.openai.toml)
-          # MODEL_NAME: openai/gpt-4o-mini
+          OPENAI_BASE_URL: ${{ vars.OPENAI_BASE_URL }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           #
           # Required cuga feature flags
           DYNACONF_SKILLS__ENABLED: "true"

@@ -170,6 +170,14 @@ jobs:
           OPENAI_BASE_URL: ${{ vars.OPENAI_BASE_URL }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          # Watsonx (IBM): set CUGA_PROVIDER_CONFIG=settings.watsonx.toml
+          # Required if using watsonx:
+          #   secret WATSONX_APIKEY
+          #   var    WATSONX_PROJECT_ID
+          #   var    WATSONX_URL (e.g. https://us-south.ml.cloud.ibm.com)
+          WATSONX_APIKEY: ${{ secrets.WATSONX_APIKEY }}
+          WATSONX_PROJECT_ID: ${{ vars.WATSONX_PROJECT_ID }}
+          WATSONX_URL: ${{ vars.WATSONX_URL }}
           #
           # Required cuga feature flags
           DYNACONF_SKILLS__ENABLED: "true"

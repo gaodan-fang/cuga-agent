@@ -178,26 +178,68 @@ jobs:
           WATSONX_APIKEY: ${{ secrets.WATSONX_APIKEY }}
           WATSONX_PROJECT_ID: ${{ vars.WATSONX_PROJECT_ID }}
           WATSONX_URL: ${{ vars.WATSONX_URL }}
-          #
-          # Required cuga feature flags
-          DYNACONF_SKILLS__ENABLED: "true"
-          DYNACONF_ADVANCED_FEATURES__ENABLE_SHELL_TOOL: "true"
-          DYNACONF_ADVANCED_FEATURES__OPENSANDBOX_SANDBOX: "true"
         run: |
           python - <<'EOF'
-          import asyncio, os
-
+          import asyncio, os, pathlib, subprocess
           from cuga import CugaAgent
+          from langchain_core.tools import tool
+
+          # Custom tools — cuga's SDK entry point does not ship built-in shell/file
+          # tools (those require OpenSandbox, which we intentionally don't run here).
+          # We define lightweight LangChain tools that run directly in the GH Actions
+          # runner, where `gh` and `git` are pre-installed and GITHUB_TOKEN is set.
+
+          @tool
+          def run_command(command: str) -> str:
+              """Run a shell command in the current working directory.
+
+              Use this for `gh` CLI calls, `git` operations, and any other shell work.
+              Returns the combined stdout + stderr with the exit code.
+              Timeout is 5 minutes per call.
+              """
+              try:
+                  result = subprocess.run(
+                      command, shell=True, capture_output=True, text=True, timeout=300
+                  )
+              except subprocess.TimeoutExpired:
+                  return "[exit timeout] command exceeded 300s"
+              out = result.stdout or ""
+              if result.stderr:
+                  out += "\n[stderr]\n" + result.stderr
+              return f"[exit {result.returncode}]\n{out}"
+
+          @tool
+          def read_file(path: str) -> str:
+              """Read a text file from the repository workspace and return its contents."""
+              return pathlib.Path(path).read_text()
+
+          @tool
+          def write_file(path: str, content: str) -> str:
+              """Overwrite a text file with the given content. Creates parent dirs if needed."""
+              p = pathlib.Path(path)
+              p.parent.mkdir(parents=True, exist_ok=True)
+              p.write_text(content)
+              return f"wrote {len(content)} bytes to {path}"
+
+          @tool
+          def list_files(directory: str = ".") -> str:
+              """List the entries in a directory (non-recursive), one per line."""
+              return "\n".join(sorted(os.listdir(directory)))
 
           async def main():
-              agent = CugaAgent()
+              # Inline the fetched skill body as the prompt preamble, so we don't depend
+              # on cuga's skill-discovery (which requires OpenSandbox to be reachable).
+              skill_md = pathlib.Path(".agents/skills/pr-review-fix/SKILL.md").read_text()
+
               pr   = os.environ["PR_NUMBER"]
               repo = os.environ["GITHUB_REPOSITORY"]
               msg  = (
-                  f"Use the pr-review-fix skill to process PR #{pr} on {repo}. "
-                  "Fetch review comments, apply minimal fixes for CodeRabbit critical/major/minor "
-                  "and actionable human comments, commit one fix per commit, push."
+                  f"You are handling PR #{pr} on {repo}. Use the tools run_command, "
+                  f"read_file, write_file, and list_files to do the work. Follow these "
+                  f"instructions exactly:\n\n---\n{skill_md}\n---"
               )
+
+              agent = CugaAgent(tools=[run_command, read_file, write_file, list_files])
               result = await agent.invoke(msg)
               print(result.answer)
 

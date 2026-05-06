@@ -1,0 +1,183 @@
+# cuga-pr-review.yml — Approach B + concurrency group
+#
+# ARMING LOGIC (Approach B):
+#   1. Someone posts `/cuga` on a PR → this workflow fires, adds label `cuga-enabled`,
+#      then runs cuga to process the PR.
+#   2. Subsequent comments on that PR auto-fire cuga because the label is present,
+#      even if the comment body doesn't start with `/cuga`.
+#   3. `/cuga stop` removes the label so future comments no longer auto-fire.
+#
+# CONCURRENCY:
+#   group: cuga-pr-<PR number>, cancel-in-progress: true
+#   If CodeRabbit posts 8 comments in 3 seconds, only the last workflow run survives.
+#   That final run sees all the comments together and processes them in one pass.
+#
+# INSTALL:
+#   Copy ONLY this file into your repo's .github/workflows/ — nothing else.
+#   The workflow fetches the pr-review-fix skill definition from the cuga-agent
+#   repo at runtime (see the "Fetch pr-review-fix skill" step below), so you
+#   never need to copy the SKILL.md into your repo.
+#
+#   Pin or swap the skill source by editing CUGA_SKILLS_REPO / CUGA_SKILLS_REF
+#   in the env block of the "Fetch pr-review-fix skill" step.
+
+name: cuga PR review
+
+on:
+  issue_comment:
+    types: [created]
+
+# Collapse concurrent runs for the same PR — last writer wins.
+# This is the key guard against CodeRabbit comment bursts.
+concurrency:
+  group: cuga-pr-${{ github.event.issue.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  review:
+    # Only run on PR comments (not issue comments) AND one of:
+    #   a) the comment body starts with `/cuga` (first invocation or explicit command)
+    #   b) the PR already carries the `cuga-enabled` label (subsequent auto-fire)
+    if: |
+      github.event.issue.pull_request != null &&
+      (
+        startsWith(github.event.comment.body, '/cuga') ||
+        contains(github.event.issue.labels.*.name, 'cuga-enabled')
+      )
+    runs-on: ubuntu-latest
+
+    steps:
+      # ── 1. Checkout ──────────────────────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      # ── 2. Python ────────────────────────────────────────────────────────────
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # ── 3. uv ────────────────────────────────────────────────────────────────
+      - name: Install uv
+        run: pip install uv
+
+      # ── 4. Install cuga ──────────────────────────────────────────────────────
+      # Running inside cuga-agent repo: `uv sync` is preferred.
+      # For external consumers change this to: uv pip install --system cuga
+      - name: Install cuga
+        run: uv pip install --system cuga
+
+      # ── 5. Git identity ──────────────────────────────────────────────────────
+      - name: Configure git identity
+        run: |
+          git config user.name  "cuga-bot"
+          git config user.email "cuga-bot@users.noreply.github.com"
+
+      # ── 6. Handle /cuga stop ─────────────────────────────────────────────────
+      # Removes the label so subsequent comments no longer auto-fire cuga.
+      - name: Handle stop command
+        if: startsWith(github.event.comment.body, '/cuga stop')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR="${{ github.event.issue.number }}"
+          gh pr edit "$PR" --remove-label cuga-enabled 2>/dev/null || true
+          gh pr comment "$PR" --body "cuga stopped. Future comments on this PR will not trigger automatic review. Run \`/cuga\` to re-arm."
+          echo "CUGA_STOP=true" >> "$GITHUB_ENV"
+
+      # ── 7. Arm the PR (add label on first /cuga) ─────────────────────────────
+      # Idempotent: label creation uses `|| true`; re-adding an existing label is a no-op.
+      - name: Arm PR with cuga-enabled label
+        if: |
+          env.CUGA_STOP != 'true' &&
+          startsWith(github.event.comment.body, '/cuga') &&
+          !contains(github.event.issue.labels.*.name, 'cuga-enabled')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR="${{ github.event.issue.number }}"
+          # Create the label in the repo if it doesn't exist yet
+          gh label create cuga-enabled \
+            --color 0E8A16 \
+            --description "PR is being watched by cuga" \
+            2>/dev/null || true
+          gh pr edit "$PR" --add-label cuga-enabled
+
+      # ── 8. Checkout the PR branch ────────────────────────────────────────────
+      - name: Check out PR branch
+        if: env.CUGA_STOP != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh pr checkout ${{ github.event.issue.number }}
+
+      # ── 9. Fetch the pr-review-fix skill ─────────────────────────────────────
+      # The skill is cuga's capability — it lives in the cuga-agent repo and is
+      # fetched at runtime so consumer repos don't have to vendor a copy.
+      # Cuga discovers it automatically because `.agents/skills/**/SKILL.md` in
+      # the current working directory is a recognised skill search root.
+      #
+      # To pin a specific cuga version, change CUGA_SKILLS_REF to a tag or SHA.
+      - name: Fetch pr-review-fix skill
+        if: env.CUGA_STOP != 'true'
+        env:
+          CUGA_SKILLS_REPO: cuga-project/cuga-agent
+          CUGA_SKILLS_REF: main
+        run: |
+          mkdir -p .agents/skills/pr-review-fix
+          curl -fsSL \
+            "https://raw.githubusercontent.com/${CUGA_SKILLS_REPO}/${CUGA_SKILLS_REF}/docs/examples/pr-review-fix/SKILL.md" \
+            -o .agents/skills/pr-review-fix/SKILL.md
+          echo "Fetched skill from ${CUGA_SKILLS_REPO}@${CUGA_SKILLS_REF}"
+          wc -l .agents/skills/pr-review-fix/SKILL.md
+
+      # ── 10. Run cuga ─────────────────────────────────────────────────────────
+      - name: Run cuga PR review
+        if: env.CUGA_STOP != 'true'
+        id: cuga
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+          # Pick ONE of the following LLM keys; the other can be left empty.
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          # Required cuga feature flags
+          DYNACONF_SKILLS__ENABLED: "true"
+          DYNACONF_ADVANCED_FEATURES__ENABLE_SHELL_TOOL: "true"
+          DYNACONF_ADVANCED_FEATURES__OPENSANDBOX_SANDBOX: "true"
+        run: |
+          python - <<'EOF'
+          import asyncio, os
+
+          from cuga import CugaAgent
+
+          async def main():
+              agent = CugaAgent()
+              pr   = os.environ["PR_NUMBER"]
+              repo = os.environ["GITHUB_REPOSITORY"]
+              msg  = (
+                  f"Use the pr-review-fix skill to process PR #{pr} on {repo}. "
+                  "Fetch review comments, apply minimal fixes for CodeRabbit critical/major/minor "
+                  "and actionable human comments, commit one fix per commit, push."
+              )
+              result = await agent.invoke(msg)
+              print(result.answer)
+
+          asyncio.run(main())
+          EOF
+
+      # ── 11. Post summary comment ─────────────────────────────────────────────
+      - name: Post summary comment on PR
+        if: env.CUGA_STOP != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR="${{ github.event.issue.number }}"
+          gh pr comment "$PR" --body "**cuga** finished processing this comment. See the commits above for applied fixes. Run \`/cuga stop\` to disarm automatic review on this PR."

@@ -128,8 +128,12 @@ jobs:
       - name: Fetch pr-review-fix skill
         if: env.CUGA_STOP != 'true'
         env:
-          CUGA_SKILLS_REPO: cuga-project/cuga-agent
-          CUGA_SKILLS_REF: main
+          # Pre-merge testing: point at the fork's feature branch.
+          # After this PR merges to cuga-project/cuga-agent main, revert these to
+          #   CUGA_SKILLS_REPO: cuga-project/cuga-agent
+          #   CUGA_SKILLS_REF: main
+          CUGA_SKILLS_REPO: gaodan-fang/cuga-agent
+          CUGA_SKILLS_REF: feat/pr-review-fix-skill
         run: |
           mkdir -p .agents/skills/pr-review-fix
           curl -fsSL \

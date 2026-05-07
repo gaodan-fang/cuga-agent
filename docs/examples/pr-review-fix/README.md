@@ -1,8 +1,10 @@
 # pr-review-fix
 
-**This is the reply-only version of the skill.** When armed, cuga replies to any
-new comment on the PR with a short, grounded response. No code edits, no commits,
-no pushes. Code-fix behaviour is planned for a future revision.
+**This is the reply-with-suggestions version of the skill.** When armed, cuga
+reads inline review comments and top-level PR comments, then replies to each
+with either a text answer or a GitHub `suggestion` block. Cuga itself never
+commits to the repo — the reviewer clicks "Commit suggestion" to apply any code
+change.
 
 ## How it works
 
@@ -10,8 +12,9 @@ Comment `/cuga` on a PR to arm it. Arming adds the `cuga-enabled` label to the P
 that, every new comment on the PR fires the GitHub Actions workflow. The workflow runs
 under a `cuga-pr-<PR>` concurrency group with `cancel-in-progress: true`, so back-to-back
 CodeRabbit comments collapse into one run instead of piling up. The workflow calls cuga
-headless via the Python SDK; cuga reads the triggering comment, composes a reply, and
-posts it back on the PR conversation.
+headless via the Python SDK; cuga walks the PR's three comment sources (inline review
+comments, top-level conversation, and review bodies), decides whether each needs a text
+answer or a one-click suggestion, and posts the replies back in-thread.
 
 ## Files
 
@@ -48,10 +51,12 @@ skill" step of the workflow (defaults to `main` on `cuga-project/cuga-agent`).
 
 ## Limits
 
-- Reply-only in this version — does not edit files, commit, or push.
-- One reply per invocation. No back-and-forth inside a single run.
+- No direct commits, no pushes, no file edits. Code changes only reach the repo when a reviewer clicks "Commit suggestion" on one of cuga's suggestion blocks.
+- Caps at five replies per run to keep each invocation focused.
+- One reply per comment per run — cuga checks author history before replying to avoid double-posting.
+- Suggestion blocks work only when cuga replies to an inline review comment (GitHub threads them against the original lines); top-level PR comments cannot carry commit suggestions.
 - Requires either a `cuga-enabled` label or a comment starting with `/cuga` to fire; otherwise the workflow skips silently.
-- The concurrency group cancels in-flight runs when new comments arrive, so bursts from CodeRabbit collapse into one run and only the final comment is replied to.
+- The concurrency group cancels in-flight runs when new comments arrive, so bursts from CodeRabbit collapse into one run.
 - cuga currently lacks a native one-shot CLI, so the workflow calls the Python SDK via a small inline script.
 
 ## Troubleshooting

@@ -1,77 +1,148 @@
 ---
 name: pr-review-fix
-description: Reply to the PR comment that triggered this workflow run. Posts one short, helpful response on the PR conversation.
+description: Reads inline review comments and top-level PR comments, then replies to each with either a text answer or a GitHub suggestion block that the reviewer can one-click commit. Does not push commits directly.
 ---
 
 ## Goal
 
-Read the triggering comment (already provided in the prompt and also in the
-`TRIGGER_COMMENT_AUTHOR` / `TRIGGER_COMMENT_BODY` environment variables), compose
-a short, direct reply, and post it as a PR comment. Nothing else — no file edits,
-no commits, no rebases. This is the reply-only version of the skill; code fixes
-will come later.
+When invoked on a PR, read the review feedback and respond to it. For each
+comment you address:
+
+- If it's a question or discussion → reply with a short text answer.
+- If it's a concrete code change request → reply with a `suggestion` block so
+  GitHub shows a "Commit suggestion" button. The reviewer applies the fix with
+  one click; cuga never writes to the repo itself.
 
 ## Available tools
 
 - `run_command` — execute shell commands (use for `gh` CLI)
-- `read_file` — read a file's full contents (use only if the comment clearly refers to one)
-- `write_file` — write a file (not needed in the reply-only flow)
-- `list_files` — list directory contents (not needed in the reply-only flow)
+- `read_file` — read a file's full contents (use to ground your suggestions in the actual code)
+- `write_file` — available but **must not be used** in this skill (no direct edits)
+- `list_files` — available but rarely needed
+
+## Inputs already provided in the environment
+
+- `PR_NUMBER` — the PR this run is handling
+- `TRIGGER_COMMENT_AUTHOR` — the author of the comment that woke cuga up
+- `TRIGGER_COMMENT_BODY` — the full text of that comment
+- `GITHUB_TOKEN` / `GITHUB_REPOSITORY` — standard Actions values
 
 ## Workflow
 
-### Step 1: Read the trigger
-
-The prompt already contains the triggering comment. You can also re-read it from
-the environment:
+### Step 1: Resolve OWNER and REPO
 
 ```
-TRIGGER_COMMENT_AUTHOR=${TRIGGER_COMMENT_AUTHOR:-unknown}
-TRIGGER_COMMENT_BODY="$TRIGGER_COMMENT_BODY"
-PR_NUMBER=${PR_NUMBER:?required}
+OWNER=$(gh repo view --json owner -q .owner.login)
+REPO=$(gh repo view --json name -q .name)
 ```
 
-### Step 2: Compose the reply
+The `run_command` tool returns plain stdout on exit 0, so the result of these
+commands can be interpolated directly into later commands.
 
-Write one short reply (1–3 sentences). Keep it direct and grounded in what the
-commenter actually said. Handle these cases:
+### Step 2: Check out the PR branch
 
-- **Greeting / `/cuga` with no other text** — acknowledge you are watching the PR
-  and will respond to further comments.
-- **Question about the PR** — answer based on what the comment contains. If you
-  need code context to answer, use `read_file` on the specific file they named.
-  If you cannot answer from the comment alone, say so briefly.
-- **Code-change request** — acknowledge the request and say that code fixes are
-  not yet enabled in this version of the skill.
-- **Non-actionable (praise, thanks, discussion)** — respond with a short friendly
-  acknowledgement.
+```
+gh pr checkout $PR_NUMBER
+```
 
-Do not invent facts about the PR diff, commits, or CI state — only use what the
-comment itself provides or what you can read directly from files.
+This lets `read_file` reach the PR's version of the code.
 
-### Step 3: Post the reply
+### Step 3: Fetch the comment sources
 
-Escape the body safely (use single quotes and a heredoc to avoid shell expansion):
+Three endpoints, because review feedback can live in any of them:
+
+```
+gh api repos/$OWNER/$REPO/pulls/$PR_NUMBER/comments          # inline diff comments (line-level)
+gh api repos/$OWNER/$REPO/issues/$PR_NUMBER/comments         # top-level PR conversation
+gh api repos/$OWNER/$REPO/pulls/$PR_NUMBER/reviews           # review bodies (CodeRabbit summaries land here)
+```
+
+Parse each as JSON. An empty body or non-JSON response should be treated as an
+empty list, not an error.
+
+### Step 4: Decide which comments to address
+
+Pick the set of comments to respond to in this run:
+
+1. Always address the triggering comment (`TRIGGER_COMMENT_BODY` from env) — it
+   is the reason this run exists. If it is the literal arming text `/cuga` or
+   `/cuga stop`, skip it (no reply needed; the workflow already handles arming).
+2. Additionally address any **inline review comment** from a non-cuga author
+   that does not yet have a reply authored by cuga or `github-actions[bot]`.
+3. Skip anything authored by cuga itself or by `github-actions[bot]`.
+
+Cap at five comments per run to keep responses focused.
+
+### Step 5: Compose each reply
+
+For each selected comment, pick one of two reply shapes.
+
+**Text reply.** Use this when the comment is a question, discussion, or
+acknowledgement. Keep it to 1–3 sentences. Prefix with `@<author>` so the
+commenter gets a notification.
+
+**Suggestion block.** Use this when the comment points at specific lines and a
+concrete change is obvious. Read the file with `read_file`, then post a reply
+containing a fenced `suggestion` block with the new code:
+
+```` markdown
+@alice good catch — here's the fix:
+
+```suggestion
+def greet(name):
+    return f"Hello, {name}!"
+```
+````
+
+The `suggestion` block must contain **only** the replacement for the exact
+lines the reviewer commented on. GitHub renders it with a one-click
+"Commit suggestion" button; the reviewer is the one who actually commits it.
+
+If you cannot ground a suggestion in the real file contents (you didn't read
+it, or the line anchor is unclear), fall back to a text reply explaining what
+would need to change.
+
+### Step 6: Post each reply
+
+Two different endpoints depending on where the comment lives.
+
+**Inline review comment** — reply in the same thread so GitHub attaches the
+suggestion to the right lines:
+
+```
+gh api -X POST \
+  repos/$OWNER/$REPO/pulls/$PR_NUMBER/comments/$COMMENT_ID/replies \
+  --field body="<your reply>"
+```
+
+**Top-level PR conversation comment** (including the `/cuga` trigger itself):
 
 ```
 gh pr comment $PR_NUMBER --body "<your reply>"
 ```
 
-Prefix the reply with `@$TRIGGER_COMMENT_AUTHOR` so the commenter gets a
-notification. Keep the whole message under ~400 characters.
+Escape safely. Prefer piping the body in via a file or `--body-file -` rather
+than embedding multi-line strings in a shell argument.
 
-### Step 4: Print a one-line summary
+### Step 7: Print a summary line per reply
 
-Print a single line to stdout so the Actions log shows what happened, e.g.:
+One line per comment, e.g.:
 
 ```
-replied to @alice on PR #42
+replied (text) to @alice on issue comment 123
+replied (suggestion) to @bob on inline comment 456 at src/foo.py:42
+skipped /cuga arming comment
 ```
+
+This is only for the Actions log — it is not posted back to the PR.
 
 ## Hard rules
 
-- Do not modify any files.
-- Do not run `git add`, `git commit`, or `git push`.
-- Do not reply more than once per invocation.
-- Do not quote the full comment back — it's already in the thread.
-- If `gh pr comment` fails, print the error and exit without retrying.
+- Do not call `write_file`, `git add`, `git commit`, or `git push`. All changes
+  reach the repo only via suggestion blocks that the reviewer commits.
+- Do not reply to the same comment twice in one run.
+- Do not invent facts about the diff, CI status, or unrelated files. Ground
+  suggestions in file contents you actually read.
+- Do not reply to yourself (`cuga` / `github-actions[bot]`).
+- Keep each reply under ~600 characters of prose plus, at most, one
+  `suggestion` block.

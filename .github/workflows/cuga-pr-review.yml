@@ -258,11 +258,5 @@ jobs:
           asyncio.run(main())
           EOF
 
-      # ── 11. Post summary comment ─────────────────────────────────────────────
-      - name: Post summary comment on PR
-        if: env.CUGA_STOP != 'true'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          PR="${{ github.event.issue.number }}"
-          gh pr comment "$PR" --body "**cuga** finished processing this comment. See the commits above for applied fixes. Run \`/cuga stop\` to disarm automatic review on this PR."
+      # In the reply-only version of the skill, cuga posts its own reply inside
+      # the Run step above. No separate summary comment is needed here.

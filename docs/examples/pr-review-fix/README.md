@@ -1,17 +1,17 @@
 # pr-review-fix
 
-This skill enables automated PR comment handling via cuga. When armed, cuga reads
-new PR comments and applies code fixes or responses according to the instructions in
-SKILL.md. It is designed to work alongside CodeRabbit and human reviewers, collapsing
-rapid comment bursts into a single bounded run.
+**This is the reply-only version of the skill.** When armed, cuga replies to any
+new comment on the PR with a short, grounded response. No code edits, no commits,
+no pushes. Code-fix behaviour is planned for a future revision.
 
 ## How it works
 
 Comment `/cuga` on a PR to arm it. Arming adds the `cuga-enabled` label to the PR. After
-that, every new comment on the PR fires the GitHub Actions workflow. The workflow runs under
-a `cuga-pr-<PR>` concurrency group with `cancel-in-progress: true`, so back-to-back
+that, every new comment on the PR fires the GitHub Actions workflow. The workflow runs
+under a `cuga-pr-<PR>` concurrency group with `cancel-in-progress: true`, so back-to-back
 CodeRabbit comments collapse into one run instead of piling up. The workflow calls cuga
-headless via the Python SDK, and cuga loads this skill to carry out the work.
+headless via the Python SDK; cuga reads the triggering comment, composes a reply, and
+posts it back on the PR conversation.
 
 ## Files
 
@@ -48,10 +48,10 @@ skill" step of the workflow (defaults to `main` on `cuga-project/cuga-agent`).
 
 ## Limits
 
-- Single pass per invocation, no CI wait, no loop. Re-comment `/cuga` if you want another pass.
-- Does not reply to reviewer threads in v1; thread replies are a planned follow-up.
-- Requires either a `cuga-enabled` label or a comment starting with `/cuga` to fire — otherwise the workflow skips silently.
-- The concurrency group cancels in-flight runs when new comments arrive. Rare edge: if a push happens during cuga's run, that push is lost when the run is cancelled — the next comment will pick it up.
+- Reply-only in this version — does not edit files, commit, or push.
+- One reply per invocation. No back-and-forth inside a single run.
+- Requires either a `cuga-enabled` label or a comment starting with `/cuga` to fire; otherwise the workflow skips silently.
+- The concurrency group cancels in-flight runs when new comments arrive, so bursts from CodeRabbit collapse into one run and only the final comment is replied to.
 - cuga currently lacks a native one-shot CLI, so the workflow calls the Python SDK via a small inline script.
 
 ## Troubleshooting

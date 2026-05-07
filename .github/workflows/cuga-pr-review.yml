@@ -247,16 +247,44 @@ jobs:
                   f"You are handling PR #{pr} on {repo}.\n\n"
                   f"This run was triggered by a new comment from @{author}:\n"
                   f"<<<\n{trigger}\n>>>\n\n"
-                  f"Use the tools run_command, read_file, write_file, and list_files. "
+                  f"Use the tools run_command, read_file, write_file, and list_files "
+                  f"to fetch real data before you answer. Ground every claim in tool "
+                  f"output — do not guess at file counts, diff contents, CI status, "
+                  f"or any other PR fact. Your final text answer will be posted on the "
+                  f"PR verbatim by the workflow; do not post it yourself.\n\n"
                   f"Follow these instructions exactly:\n\n---\n{skill_md}\n---"
               )
 
               agent = CugaAgent(tools=[run_command, read_file, write_file, list_files])
               result = await agent.invoke(msg)
-              print(result.answer)
+
+              # Hand the reply off to the workflow by writing it to a file the next
+              # step will read. stdout stays verbose for the Actions log.
+              reply = (result.answer or "").strip()
+              pathlib.Path("/tmp/cuga-reply.md").write_text(reply)
+              print("=" * 60)
+              print("CUGA REPLY (will be posted by next workflow step):")
+              print("=" * 60)
+              print(reply or "[empty answer]")
 
           asyncio.run(main())
           EOF
+
+      # ── 11. Post cuga's answer as a PR comment ───────────────────────────────
+      # Posting is owned by the workflow, not by cuga. cuga writes its reply to
+      # /tmp/cuga-reply.md in the previous step; we forward that text verbatim.
+      - name: Post cuga reply on PR
+        if: env.CUGA_STOP != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR="${{ github.event.issue.number }}"
+          if [ ! -s /tmp/cuga-reply.md ]; then
+            echo "cuga produced an empty reply; skipping PR comment."
+            exit 0
+          fi
+          gh pr comment "$PR" --body-file /tmp/cuga-reply.md
+          echo "Posted cuga reply to PR #$PR"
 
       # In the reply-only version of the skill, cuga posts its own reply inside
       # the Run step above. No separate summary comment is needed here.

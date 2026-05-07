@@ -36,27 +36,48 @@ gh pr checkout $PR_NUMBER
 
 ### Step 3: Fetch review comments
 
-Gather all comment sources:
+A PR can have comments in three distinct places; you must query all three or you
+will miss CodeRabbit findings, which live under **reviews**, not inline comments.
 
 ```
 gh pr view $PR_NUMBER --json number,headRefName,baseRefName,author
-gh api repos/$OWNER/$REPO/pulls/$PR_NUMBER/comments        # inline diff comments
-gh api repos/$OWNER/$REPO/issues/$PR_NUMBER/comments       # top-level PR comments
+gh api repos/$OWNER/$REPO/pulls/$PR_NUMBER/reviews         # review bodies (CodeRabbit summary finds itself here)
+gh api repos/$OWNER/$REPO/pulls/$PR_NUMBER/comments        # inline diff comments (line-level replies from any review)
+gh api repos/$OWNER/$REPO/issues/$PR_NUMBER/comments       # top-level PR conversation comments
 ```
+
+Treat the `run_command` tool output as clean stdout: no "[exit N]" prefix is
+added on success, so you can assign the result directly to a variable and
+json.loads it without additional cleaning.
 
 Filter out:
 - Bot self-replies (comments where the commenter is the same bot that already posted a fix note).
-- Any comments already posted by cuga (author login matches cuga's bot identity).
+- Any comments already posted by cuga or by `github-actions[bot]` (those are workflow-posted summaries).
+- `gh api /user` may return HTTP 403 in GitHub Actions (the default token cannot
+  read user info). That is fine — skip the bot-login lookup and rely on the
+  login fields inside the comment payloads instead.
 
 ### Step 4: Triage CodeRabbit findings
 
-For each comment authored by `coderabbitai` (or similar bot login):
+CodeRabbit posts under the `coderabbitai` login (sometimes `coderabbitai[bot]`).
+Its findings can appear in any of three shapes:
 
-- Extract the severity label from the comment body. Accept: `critical`, `major`, `minor`.
-- Skip `nitpick` or any finding labelled `nitpick` / `suggestion` only.
-- For each accepted finding, read the relevant file(s) and verify the issue is still present in
-  the current code. If already resolved, mark as skipped (reason: already fixed).
+- Items inside the **review body** from `/pulls/$PR/reviews` (often the summary
+  plus a list of actionable findings, each with a severity tag).
+- Items in the **inline review comments** from `/pulls/$PR/comments` (per-line
+  findings; each has a `path` and sometimes a `line` field).
+- Occasional extra notes in `/issues/$PR/comments`.
+
+For each finding:
+
+- Extract the severity label. Accept: `critical`, `major`, `minor`.
+- Skip `nitpick` or anything labelled `nitpick` / `suggestion` only.
+- Read the referenced file and verify the issue is still present in the current
+  code. If already resolved, mark as skipped (reason: already fixed).
 - Apply the minimal targeted fix. Do not refactor surrounding code.
+- If a finding is inside the review body (not an inline comment) and does not
+  clearly name a file/line, skip it with reason "no file anchor" rather than
+  guessing.
 
 ### Step 5: Triage human comments
 

@@ -149,6 +149,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.issue.number }}
+          # The comment that woke cuga up. Pass into the prompt so cuga doesn't
+          # have to re-discover what just happened.
+          TRIGGER_COMMENT_AUTHOR: ${{ github.event.comment.user.login }}
+          TRIGGER_COMMENT_BODY: ${{ github.event.comment.body }}
           # LLM provider + model selection.
           # Configure without editing this file by setting repo VARIABLES
           # (Settings > Secrets and variables > Actions > Variables tab):
@@ -194,19 +198,23 @@ jobs:
               """Run a shell command in the current working directory.
 
               Use this for `gh` CLI calls, `git` operations, and any other shell work.
-              Returns the combined stdout + stderr with the exit code.
-              Timeout is 5 minutes per call.
+              On success (exit 0) returns ONLY stdout, so the output is safe to
+              interpolate into subsequent commands. On non-zero exit returns a
+              diagnostic string beginning with "[non-zero exit N]" followed by
+              stdout and stderr. Timeout is 5 minutes per call.
               """
               try:
                   result = subprocess.run(
                       command, shell=True, capture_output=True, text=True, timeout=300
                   )
               except subprocess.TimeoutExpired:
-                  return "[exit timeout] command exceeded 300s"
-              out = result.stdout or ""
-              if result.stderr:
-                  out += "\n[stderr]\n" + result.stderr
-              return f"[exit {result.returncode}]\n{out}"
+                  return "[timeout] command exceeded 300s"
+              if result.returncode == 0:
+                  return result.stdout
+              return (
+                  f"[non-zero exit {result.returncode}]\n"
+                  f"{result.stdout}\n[stderr]\n{result.stderr}"
+              )
 
           @tool
           def read_file(path: str) -> str:
@@ -231,12 +239,16 @@ jobs:
               # on cuga's skill-discovery (which requires OpenSandbox to be reachable).
               skill_md = pathlib.Path(".agents/skills/pr-review-fix/SKILL.md").read_text()
 
-              pr   = os.environ["PR_NUMBER"]
-              repo = os.environ["GITHUB_REPOSITORY"]
+              pr      = os.environ["PR_NUMBER"]
+              repo    = os.environ["GITHUB_REPOSITORY"]
+              author  = os.environ.get("TRIGGER_COMMENT_AUTHOR", "")
+              trigger = os.environ.get("TRIGGER_COMMENT_BODY", "")
               msg  = (
-                  f"You are handling PR #{pr} on {repo}. Use the tools run_command, "
-                  f"read_file, write_file, and list_files to do the work. Follow these "
-                  f"instructions exactly:\n\n---\n{skill_md}\n---"
+                  f"You are handling PR #{pr} on {repo}.\n\n"
+                  f"This run was triggered by a new comment from @{author}:\n"
+                  f"<<<\n{trigger}\n>>>\n\n"
+                  f"Use the tools run_command, read_file, write_file, and list_files. "
+                  f"Follow these instructions exactly:\n\n---\n{skill_md}\n---"
               )
 
               agent = CugaAgent(tools=[run_command, read_file, write_file, list_files])
